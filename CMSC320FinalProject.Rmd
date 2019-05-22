@@ -2,9 +2,6 @@
 title: "Final Project"
 output: html_document
 ---
-get rid of warnings
-add labels
-try to fix weird numbering on residual x axis
 
 ##Introduction
 One of the fastest-paced sports in the American sports scene is hockey. With premier athletes skating at top speed, smacking a small, rubbish puck (and each other) with a stick, the sport is inordiantely challenging and complex. Like teams in Major League Baseball and the National Basketball Association, hockey teams have begun to look into advanced statistics to better measure how their performance. This tutorial will be an investigation of some statistics used in hockey to measure the success of a given team.
