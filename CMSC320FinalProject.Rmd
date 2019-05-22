@@ -1,0 +1,371 @@
+---
+title: "Final Project"
+output: html_document
+---
+get rid of warnings
+add labels
+try to fix weird numbering on residual x axis
+
+##Introduction
+One of the fastest-paced sports in the American sports scene is hockey. With premier athletes skating at top speed, smacking a small, rubbish puck (and each other) with a stick, the sport is inordiantely challenging and complex. Like teams in Major League Baseball and the National Basketball Association, hockey teams have begun to look into advanced statistics to better measure how their performance. This tutorial will be an investigation of some statistics used in hockey to measure the success of a given team.
+
+##Data Ingestion
+To start we must collect raw data. Thankfully, there are several websites with significant quantities of hockey data available. The datasets I used were conveniently stored in comma-separated values (.csv) files, which allowed for relatively use. These datasets are from Natural Stat Trick (http://www.naturalstattrick.com/) and hold National Hockey League (NHL) data from the past ten years. Here, I use the read_csv() function to read the data into tables, only, however, after loading the libraries I intend to use throughout the tutorial.
+
+```{r setup,  warning=FALSE, message=FALSE}
+library(broom)
+library(tidyverse)
+library(dplyr)
+library(rvest)
+library(tibble)
+nst_2019 <- read_csv("~/Downloads/NST2018-2019.csv")
+nst_2018 <- read_csv("~/Downloads/NST2017-2018.csv")
+nst_2017 <- read_csv("~/Downloads/NST2016-2017.csv")
+nst_2016 <- read_csv("~/Downloads/NST2015-2016.csv")
+nst_2015 <- read_csv("~/Downloads/NST2014-2015.csv")
+nst_2014 <- read_csv("~/Downloads/NST2013-2014.csv")
+nst_2013 <- read_csv("~/Downloads/NST2012-2013.csv")
+nst_2012 <- read_csv("~/Downloads/NST2011-2012.csv")
+nst_2011 <- read_csv("~/Downloads/NST2010-2011.csv")
+nst_2010 <- read_csv("~/Downloads/NST2009-2010.csv")
+```
+
+Let's take a look at what one of these tables looks like:
+
+```{r firstTable}
+nst_2010
+```
+
+This table has a lot of great data, but it's a little thin on defensive stats. Let's download another series of .csv's, also from the last ten years, so that we have a most whollistic snapshot of the game. These dataset come from MoneyPuck (http://moneypuck.com/), another great resource for hockey data.
+
+```{r dataIntake2, warning=FALSE, results="hide", message=FALSE}
+mp_2010 <- read_csv("~/Downloads/MP2010.csv")
+mp_2011 <- read_csv("~/Downloads/MP2011.csv")
+mp_2012 <- read_csv("~/Downloads/MP2012.csv")
+mp_2013 <- read_csv("~/Downloads/MP2013.csv")
+mp_2014 <- read_csv("~/Downloads/MP2014.csv")
+mp_2015 <- read_csv("~/Downloads/MP2015.csv")
+mp_2016 <- read_csv("~/Downloads/MP2016.csv")
+mp_2017 <- read_csv("~/Downloads/MP2017.csv")
+mp_2018 <- read_csv("~/Downloads/MP2018.csv")
+mp_2019 <- read_csv("~/Downloads/MP2019.csv")
+```
+
+Let's see what one of these tables has in store for us:
+
+```{r secondLook}
+mp_2010
+```
+
+You might have noticed that this table is quite large, with 150 rows (also called enitities) and 107 columns (also called attributes). This table is also structured differently than the previous one. For example, this table breaks down statistics into "situations", which can be 5 on 5, 5 on 4, other, or all (in hockey, teams that violate certain rules can be penalized by having a player removed from the ice for a period of time, usually two minutes). The previous table, however, made no such distinction. You might also notice that this table does not list out the names of teams; instead, it lists abreviations for the team names, like PIT for the Pittsburgh Penguins. 
+
+To work with this data effectively and efficiently, we want to combine these tables. But before we do that, we're going to do some processing on this data so it'll be easier to work with down the road. First, we'll probably want to know what season we're dealing with when we consider a give team's data. When looking at the MoneyPuck dataset above, you might have noted the "season" attribute, with the year 2009 listed. The name of the dataset, however, is mp_2010! This is because the NHL hockey seasons run from October to April, so the season represented in the table above ran from 2009-2010. For simplicity, in this tutorial we'll consistently use the end year of the season, so that dataset is mp_2010. Using the mutate() function, we can add a season attribute for each of the Natural Stat Trick tables (which don't have one already) and correct the ones in the MoneyPuck tables.
+
+
+```{r addSeasons, results = "hide"}
+nst_2010 <- mutate(nst_2010, season = 2010)
+nst_2011 <- mutate(nst_2011, season = 2011)
+nst_2012 <- mutate(nst_2012, season = 2012)
+nst_2013 <- mutate(nst_2013, season = 2013)
+nst_2014 <- mutate(nst_2014, season = 2014)
+nst_2015 <- mutate(nst_2015, season = 2015)
+nst_2016 <- mutate(nst_2016, season = 2016)
+nst_2017 <- mutate(nst_2017, season = 2017)
+nst_2018 <- mutate(nst_2018, season = 2018)
+nst_2019 <- mutate(nst_2019, season = 2019)
+
+mp_2010 <- mutate(mp_2010, season = 2010)
+mp_2011 <- mutate(mp_2011, season = 2011)
+mp_2012 <- mutate(mp_2012, season = 2012)
+mp_2013 <- mutate(mp_2013, season = 2013)
+mp_2014 <- mutate(mp_2014, season = 2014)
+mp_2015 <- mutate(mp_2015, season = 2015)
+mp_2016 <- mutate(mp_2016, season = 2016)
+mp_2017 <- mutate(mp_2017, season = 2017)
+mp_2018 <- mutate(mp_2018, season = 2018)
+mp_2019 <- mutate(mp_2019, season = 2019)
+```
+
+We now have 20 tables, 10 from each website. Before we combine all 20 into one messy table, let's combine each group of ten so we can operate on tables with the same structure before adding the two types of tables together. This will set up the data in a rationally organized manner: because we're looking for statistical trends related to winning, and because each team changes every season, we want a row (entity) for each team in each season. 
+
+We use the rbind() function to combine tables with the same attributes. For the sake of consistency, we'll also add in a . after the "St" in "St Louis Blues"; this will come in handy when we join tables based on team names. To link multiple operations together, we use %>%, which pipes the result of one command to the following command. The last function used in this chunk is select, which allows us to pick the attributes we want for this table. Because the Natural Stat Trick dataset is very rich and includes some low-level detail, we'll cut out a bunch of these columns.
+
+```{r bind}
+ten_year_nst <- rbind(nst_2010, nst_2011, nst_2012, nst_2013, nst_2014, nst_2015, nst_2016, nst_2017, nst_2018, nst_2019) %>%
+  mutate(Team = ifelse(Team == "St Louis Blues", "St. Louis Blues", Team)) %>%
+  select(-c(1,4,8,37:69))
+ten_year_nst
+```
+
+We need to combine the MoneyPuck tables as well. We'll use the rbind function here too, but we need to do a little more processing to make sure we have the data we want without too much clutter. Remember how the MoneyPuck dataset had a "situation" attribute? Because we want to investigate winning trends collectively, we want a general picture of team performance. Accordingly, we'll use the filter function so the entities remaining in the table represent all situations. Like in the previous chunk, we'll select columns we want (notice the "-" sign in the select command above. That sign acts as a negative, telling R we want everything but those columns. Here, we don't use the "-", telling R that the columns we want are the ones listed). We'll also do a mutate to ensure that all team abreviations follow the standard three letter format. In this mutate command you'll see the use of the ifelse keyword, which allows for conditionals. You'll also notice that I change the team name "ARI" to "PHX" for 2010 to 2015. That's because the Phoenix Coyotes changed their name to the Arizona Coyotes for the 2015 season. This is a great example of how important it is to have deep knowledge of the dataset you're working with. Sometimes a problem like that will show up if you're getting weird numbers when doing analysis further on, but sometimes these problems can be hard to find. The more you know about the data you're working with the easier it'll be to make the proper corrections. 
+
+```{r bind2}
+ten_year_mp <- rbind(mp_2010, mp_2011, mp_2012, mp_2013, mp_2014, mp_2015, mp_2016, mp_2017, mp_2018, mp_2019) %>%
+  filter(situation == "all") %>%
+  select(c(1,2,8,13,23,38,39,40,53,61)) %>%
+  mutate(teamAbrev = ifelse(team == "L.A", "LAK", ifelse(team == "N.J", "NJD", ifelse(team == "S.J", "SJS", ifelse(team == "T.B", "TBL", ifelse(team == "ARI" & season < 2015, "PHX", team)))))) %>%
+  select(-c(1))
+ten_year_mp
+```
+
+Now here's the fun part. We want to join the two large datasets we've just created, but how? We could execute a join() command, but what can we join on? We need some common attributes between the two tables to act as a key so that entities can be matched appropriately. To do this, we'll scrape a list of hockey team names and abreviations from Wikipedia using the read_html() and html_node() functions.
+
+```{r getAbrevs, warning = FALSE}
+url <- "https://en.wikipedia.org/wiki/Template:NHL_team_abbreviations"
+tab_node <- read_html(url) %>%
+     html_node("table.nowraplinks.collapsible.autocollapse.navbox-inner") %>%
+     html_table() %>%
+    str_split("\n")
+tab_node[[1]]
+```
+
+We now have a list of the abreviations and names, but not a table. We'll use the str_split() function to split the names/abreviation strings and then use the separate() function to separate the abreviation from the name, giving us a table with two attributes, team names and abreviations. 
+
+```{r tidyAbrevs, warning=FALSE}
+abrevs <- tab_node[[1]] %>%
+  str_split("''", simplify = TRUE) %>%
+  as_tibble()
+
+abrevs <- separate(abrevs, V1, c("abreviation", "teamName"), " – ")
+abrevs
+```
+
+Now we can execute our join() commands. We use a left join on the team name to add team abreviations to the Natural Stat Trick table. We can then do a left join on both the season and the newly added team abreviation to give us one master table with all the data we've gathered from Natural Stat Trick, MoneyPuck, and Wikipedia. 
+
+Note: Because I wanted to preserve as much information on the Natural Stat Trick table when doing the first join, and because I was, in a sense, "applying" the abreviations to that table, I used a left join. An inner join would have yielded the same table, which means all the entries in the Natural Stat Trick table had team names that matched those in the abrevs table (don't take my word for it, try for yourself!) Once that table was set, I used another left join to "apply" the data from the MoneyPuck table to the Natural Stat trick table. Once again, an inner join would have yielded the same table, indicating that all the data in both tables matched up. Further note: this did not happen on the first try! The cleaning of data we did above set up our joins for success. In addition to learning as much about your data as possible, another key takeaway is paying close attention to the cleaning of your data - it will make your analysis later much easier!
+
+```{r join}
+nst_w_abvs <- left_join(ten_year_nst, abrevs, by = c("Team" = "teamName"))
+master <- left_join(nst_w_abvs, ten_year_mp, by = c("abreviation" = "teamAbrev", "season" = "season"))
+master
+```
+
+##Data Analysis
+Now that we have our master dataset ready to go, we can start looking at some stats. Hockey, like most sports, is simple in the sense that the team with the most goals wins. Accordingly, we might expect teams that score more than their opponents to do well. To start, let's look at goal differential, the total goals scored by a team minus those scored by their opponents over the course of a season:
+
+```{r goalDiff}
+master_w_diff <- master %>%
+  mutate(goal_diff = GF-GA)
+  
+ggplot(master_w_diff, aes(x = goal_diff, y = W)) + geom_point() + labs(title = "Goal Differential and Wins", x = "goal differential", y = "wins")
+```
+
+Does something look a little off with this distribution? Let's plot the same attributes again, but this time coloring them by season:
+
+```{r colorByYear}
+ggplot(master_w_diff, aes(x = goal_diff, y = W, color = season)) + geom_point() + labs(title = "Goal Differential and Wins", x = "goal differential", y = "wins")
+```
+
+There seems to be two linear groups here: one that runs roughly along the diagonal of the plot, and another one with similar slope but shifted down. Additionally, all the points in that lower group seem to be from the same year. What's going on here?
+
+The NHL experienced a lockout before the 2012-2013 season began (a lockout is when the players union cannot agree on certain terms presented by the league and therefore are unavailable to play). The parties eventually reached an agreement, but not until almost half the season was up. Each team only played 48 games that season, and that's causing our plot to show this strangly "underperforming" group at the bottom. This brings up the topic of missing data. Depending on the circumstances, missing data can either be left alone, imputed based on averages, or removed entirely; the choice may be somewhat subjective, but must be based on knowledge of the data. In this case, we're dealing with highly variable information: take, for example, the 2019 St. Louis Blues, who, after being dead last in the league in January, are on their way to the Stanley Cup Final as of this writing. Because teams can drastically improve or deteriorate over the course of the season, it's best we simply remove the observations from the lockout season of 2013 instead of trying to guess what the 82 game records of these teams might have been. We do just that with the filter() function in the chunk below, where we simply display the same plot as above, but without the 2013 data. We'll also throw in a linear model by using the geom_smooth() function.
+
+```{r goalDiff2}
+master_w_diff <- master %>%
+  filter(season != 2013) %>%
+  mutate(goal_diff = GF-GA)
+  
+ggplot(master_w_diff, aes(x = goal_diff, y = W)) + geom_point() + geom_smooth(method = lm) + labs(title = "Goal Differential and Wins", x = "goal differential", y = "wins")
+```
+
+The grouping on this plot is very tight, with a very clear and strong correlation between the two variables. Let's create a linear model of this data using R's lm() function to see if the math backs up this intuition from looking at the plot.
+
+```{r lmGoalDiff}
+goalDiff <- lm(W~goal_diff, data=master_w_diff)
+tidy(goalDiff)
+```
+
+We know this is a very strong relationship because of the remarkably small p value. We can interpret 0.185 to be the amount of wins added for every point increase in goal differential.
+
+It's worth noting the obvious linkage here, as stated above: scoring more goals will invariably be linked to better performance. We've quantified that statement with the analysis above. Spoiler alert: as we progress, the statistics we look at will be less directly related to wins as goals are, leading to more room for error and weaker relationships.
+
+Let's look at goals per game and compare it to what we saw for goal differential:
+
+```{r chunk3}
+master_conv <- master_w_diff %>%
+  mutate(goals_per_game = GF/82) 
+
+ggplot(master_conv, aes(x = goals_per_game, y = W)) + geom_point() + geom_smooth(method = lm) + labs(title = "Goals Per Game and Wins", x = "goals per game", y = "wins")
+
+goal_pg <- lm(W~goals_per_game, data=master_conv)
+tidy(goal_pg)
+```
+
+What do the plot above tell us? It gives us an intuition about the relationship between goals per game and wins. As expected, the more goals a team scores per game, the more likely they are to win games. We can back up this intuition with numbers from the model. The model tells us that for every added goal per game, a team increases it's win total by 16! This makes sense with what we already know: goals in hockey are few and far between, and an increase of one goal per game is a tremendous improvement that will lead to many more wins. Again note the p value, showing the significance of this finding.
+
+A more sophistocated way of predicting wins is called the Pythagorean Win/Loss formula, developed originally for baseball but proven to be relevant for hockey as well (see this paper for more details, and for why the exponent in the equation below is 2.15: http://www.hockeyanalytics.com/Research_files/DayaratnaMiller_HockeyFinal.pdf). This formula relies exclusively on goals for and against, in keeping withe previous two stats we looked at.
+
+```{r pythagWL}
+pythag <- master_conv %>%
+  mutate(pythagWL = (GF+0.5)^2.15/((GF+0.5)^2.15 + (GA+0.5)^2.15) * 100)
+
+ggplot(pythag, aes(x = pythagWL, y = W)) + geom_point() + labs(title = "Pythagorean Win/Loss and Wins", x = "pythagorean W/L", y = "wins")
+pyWL <- lm(W~pythagWL, data=pythag)
+tidy(pyWL)
+```
+
+Here we see an interesting finding. Each increase in Pythagorean W/L only accounts for about 0.8 of an actual win, although with high statistical significance, as shown by the very small p value. This makes sense in light of what we know about hockey, especially when compared to baseball. Firstly, the sample size is much smaller: baseball has almost double the games in each season. Secondly, runs occur more frequently than goals, which further shrinks the sample size, allowing for more random variablilty in a given sub-sample.
+
+Let's look at how the Pythagorean W/L compares with goal differential in accounting for wins:
+```{r pythagVSgoalDiff}
+anova(pyWL)
+anova(goalDiff)
+```
+The appear to be very similar, with residuals of 1685 and 1632. Congrats to Kevin Dayaratna and Steven Miller for coming up with such a great statistic!
+
+One topic we haven't discussed so far is the playoffs and how success in that portion of the season can or can't be predicted statistically. Although this topic is worthy of it's own project, for now let's highlight the teams that won championships so we can see where they stand on the statistics we look at as we move along. Note missing champions for 2013, in accordance with our removal of that data (see above), and for 2019, as the Stanley Cup Final hasn't occurred yet
+```{r chunk5}
+master_w_champs <- pythag %>%
+  mutate(champion = (Team == "Washington Capitals" & season == 2018) |
+           (Team == "Pittsburgh Penguins" & season == 2017) |
+           (Team == "Pittsburgh Penguins" & season == 2016) |
+           (Team == "Chicago Blackhawks" & season == 2015) |
+           (Team == "Los Angeles Kings" & season == 2014) |
+           (Team == "Los Angeles Kings" & season == 2012) |
+           (Team == "Boston Bruins" & season == 2011) |
+           (Team == "Chicago Blackhawks" & season == 2010))
+ggplot(master_w_champs, aes(x = pythagWL, y = W, color = champion)) + geom_point() + labs(title = "Pythagorean Win/Loss and Wins, with Champions", x = "pythagorean W/L", y = "wins")
+```
+
+A very interesting advanced statistic is called PDO, and it is the sum of a team's shooting percentage (goals/shots) and save percentage (saves/opponent's shots). The expectation is that over time, PDO across the league will average out to 100 (teams with higher shooting percentage's will score on opposing goalies, lowering their save percentage accordingly. Goalies with high save percentages will lower the opposing team's shooting percentage. As such, there's a give and take, leading to this intuition around 100). Let's ee if our data supports that expectation:
+
+```{r pdoProof}
+vars <- c("SH%", "SV%")
+pdo <- master_w_champs %>%
+  mutate(PDO = (.data[[vars[[1]]]] + .data[[vars[[2]]]]))
+summarize(pdo, mean(PDO))
+```
+
+Our expectation seems to be supported by the data. Because the average is 100, we consider teams with a PDO > 100 to be lucky - the puck is bouncing in their favor, helping them score more goals than they otherwise would, or their goalie is on a hot streak. As with most statistics, we expect a regression to the mean over the long term. Let's see what the data says about season-long PDO:
+
+```{r pdo}
+ggplot(pdo, aes(x = PDO, y = W, color = champion)) + geom_point() + labs(title = "Pythagorean Win/Loss and Wins, with Champions", x = "pythagorean W/L", y = "wins")
+
+pdoModel <- lm(W~PDO, data=pdo)
+tidy(pdoModel)
+```
+
+Here we see another strong relationship, this time between PDO and wins. For every point of PDO, or for every unit of luck, a team can win 4.7 more games a season! However, this statistic must be taken with a grain of salt; what makes a team good? Good shooters and a good goalie, so we expect good teams to have above-average PDO. We can test for co-linearity of wins and PDO to ensure the assumptions behind our linear model are valid.
+
+```{r PDOValidity}
+aug_exp_fit2 <- pdoModel %>%
+  augment()
+
+aug_exp_fit2 %>%
+  ggplot(aes(x=factor(PDO), y=.resid)) + geom_point() + labs(title = "PDO and Residuals", x = "fitted", y = "residuals")
+```
+The plot of residuals gives us some good news: PDO and wins appear to have constant variance, so some degree of interpretation is still valid based on the above model. Note the placement of champions: the majority are within +/-1 of 100. This may indicate that championship teams are not just lucky, but are actually quite good.
+
+The two datasets we downloaded have different ways of computing expected goals. In fact, there are many ways of computing this stat. Part of the difference emerges from the subjective evaluation of scoring chances - some analysts may consider an odd man rush (when the offense enters the offensive zone with more players than the defense) as more valuable than a close shot from the slot (middle of the ice), while others may think the opposite. Some analysts may value rebound opportunities more than others (rebounds are when a shot bounces off the goalie and back into play). Let's look at how these stats correlate to actual goals:
+
+```{r compareXGF}
+ggplot(pdo, aes(x = xGF, y = GF, color = champion)) + geom_point() + geom_smooth(method = lm)  + labs(title = "Natural Stat Trick Expected Goals and Actual Goals", x = "expected goals", y = "goals")
+ggplot(pdo, aes(x = xGoalsFor, y = GF, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "MoneyPuck Expected Goals and Actual Goals", x = "expected goals", y = "goals")
+
+nstModel <- lm(GF~xGF, data=pdo)
+anova(nstModel)
+
+mpModel <- lm(GF~xGoalsFor, data=pdo)
+anova(mpModel)
+```
+
+While the plots both indicate a relationship between expected and actual goals, the MoneyPuck plot shows a slightly stronger relationship. We can validate this intuition by looking at the residuals: Natural Stat Trick has sum squared residuals of 117,797 while MoneyPuck's sum squared residuals is 100,328, almost 17,000 less. Interestingly, MoneyPuck's method for computing expected goals is not public.
+
+```{r compareXGFToWins}
+ggplot(pdo, aes(x = xGF, y = W, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "Natural Stat Trick Expected Goals and Wins", x = "expected goals", y = "goals")
+ggplot(pdo, aes(x = xGoalsFor, y = W, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "MoneyPuck Expected Goals and Wins", x = "expected goals", y = "goals")
+
+nstModel <- lm(W~xGF, data=pdo)
+anova(nstModel)
+
+mpModel <- lm(W~xGoalsFor, data=pdo)
+anova(mpModel)
+
+```
+
+Similar to the relationship between expected goals to actual goals, the MoneyPuck expectation formula slightly outperforms that of Natural Stat Trick, but both have somewhat strong relationship to overall wins (still far from goal differential, however)
+
+Now that we know the MoneyPuck expectation formula is more accurate, we'll use it in further analysis when we want a stat involving expected goals. One such stat might be one I've come up with for the purpose of this project: unexpected goals. Because of the high degree of unpredictability and luck in hockey, a team may score goals that weren't accounted for by the expected goals formulas. Here, I subtract the expected goal differential from the actual goal differential to specify goals that were "unexpected" and therefore likely to be the product of chance. I then compare that stat to a measure of luck discussed earlier, PDO. Let's see how these measure up.
+
+```{r unexpectedGoals}
+unexp_g <- pdo %>%
+  mutate(unexpected_g = ((GF - GA) - (xGoalsFor- xGoalsAgainst)))
+ggplot(unexp_g, aes(x = unexpected_g, y = PDO, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "Unexpected Goals and PDO", x = "unexpected goals", y = "PDO")
+ggplot(unexp_g, aes(x = unexpected_g, y = W, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "Unexpected Goals and Wins", x = "unexpected goals", y = "wins")
+
+unexpectModel <- lm(W~unexpected_g, data=unexp_g)
+anova(unexpectModel)
+
+unexpectToPDOModel <- lm(PDO~unexpected_g, data=unexp_g)
+anova(unexpectToPDOModel)
+
+aug_exp_fit2 <- unexpectModel %>%
+  augment()
+
+aug_exp_fit2 %>%
+  ggplot(aes(x=factor(unexpected_g), y=.resid)) + geom_point() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+As expected, PDO and unexpected goals carry an extremely strong relationship with very residuals. The relationship of unexpected goals to wins is also quite strong, although not as strong as the relationship to PDO. To confirm the validity of the model relating unexpected goals to wins, we can observe the plot of residuals generated by that model. The plot has more or less constant variance, indicating that the model is appropriate. 
+
+Unexpected goals seem to be a good innovation, so let's try our hand at coming up with another stat. The MoneyPuck dataset included some nice defensive statistics, ones that the stats discussed above don't really touch up on. One such stat is hits, which are just what they sound like: when a player skates into another to move them off the puck. This is usually a defensive tactic but can be used in aggressive offenses as well. Let's reward a team for a hit as if it were half a shot. Another key defensive stat is takeaways, which are like steals in basketball, when a player removes the puck from an opposing players possession (the difference between takeaways and hits, among other things, is that takeaways lead to a change in possession, while hits may or may not). Let's consider a takeaway to be worth two shots, and lets combine these two adjusted stats with shot differential. The results are:
+
+```{r myStat}
+my_stat_add <- unexp_g %>%
+  mutate(myStat = SF - SA - takeawaysFor*2 + hitsFor*0.5)
+
+ggplot(my_stat_add, aes(x = myStat, y = W, color = champion)) + geom_point() + geom_smooth(method = lm) + labs(title = "myStat and Wins", x = "myStat", y = "wins")
+
+myStatModel <- lm(W~myStat, data=my_stat_add)
+anova(myStatModel)
+```
+
+This attempt at a new stat is much less successful than the first, as shown by the large spread of data and the minor slope on the linear model, in addition to high residuals. One aspect of hockey that may lead to this complication is the affects of strategy - some teams may emphasize strong defense, but can't convert that defense into offense. Alternatively, some teams my focus exclusively on offense, outscoring opponents with little defensive effort. In all, specific defensive stats are harder to relate to wins because of their succeptibility to differences in strategy.
+
+##Pulling the Goalie
+
+Towards the end of a game, if a team is down by only one goal, they may choose to remove their goalie from the ice, leaving their net empty, to allow for another skater to come on the ice and add to the offense. This is called "pulling the goalie." One question that lingers over the head of hockey analytics is when the right time to pull the goalie. Coaches tend to be conservative on this matter, while the statistics point to more aggressive pulling approach. Here, instead of asking what the proper amount of time with the extra skater is to maximize the likelihood of scoring, we'll investigate how often teams actually score when their goalie is pulled versus how often the opposing team, faced with an undefended goal before them, scores to effectively end the game. Like the data ingestion above, we read in from .csv files provided by Natural Stat Trick, which allows filtering for on goalie pulled situations.
+
+```{r dataIntake3, message=FALSE, warning=FALSE}
+gp_2010 <- read_csv("~/Downloads/GP_NST2010.csv")
+gp_2011 <- read_csv("~/Downloads/GP_NST2011.csv")
+gp_2012 <- read_csv("~/Downloads/GP_NST2012.csv")
+
+gp_2014 <- read_csv("~/Downloads/GP_NST2014.csv")
+gp_2015 <- read_csv("~/Downloads/GP_NST2015.csv")
+gp_2016 <- read_csv("~/Downloads/GP_NST2016.csv")
+gp_2017 <- read_csv("~/Downloads/GP_NST2017.csv")
+gp_2018 <- read_csv("~/Downloads/GP_NST2018.csv")
+gp_2019 <- read_csv("~/Downloads/GP_NST2019.csv")
+ten_year_gp <- rbind(gp_2010, gp_2011, gp_2012, gp_2014, gp_2015, gp_2016, gp_2017, gp_2018, gp_2019) %>%
+  select(-c(1,8,37:69))
+```
+
+Let's plot time spent with the goalie pulled against goal differential during that time
+
+```{r gpPlusMinus}
+ten_year_gp_gd <- ten_year_gp %>%
+  mutate(goalDifferential = GF - GA)
+ggplot(ten_year_gp_gd, aes(x = TOI, y = goalDifferential)) + geom_point() + geom_smooth(method=lm) + labs(title = "Goal Differential over Time with Goalie Pulled", x = "time on ice", y = "goal differential")
+```
+
+The plot and linear model make clear the negative relationship between time with the goalie pulled and goal differential. While pulling the goalie may be the only hope for a team down in the closing minutes of a game, it's important to understand the most likely outcome, which is the opposing team scoring a goal on an unguarded net.
+
+##Conclusion
+Thank you for completing this tutorial! I hope it served as an interesting lesson not only in the world of hockey analytics but also in data science as a whole. Here are some key takeaways related to both:
+
+1. Know your data! It will make your projects that much easier and prevent confusing and non-sensical results
+2. Goals are all that matter at the end of the day
+3. Don't be afraid to innovate and try to come up with your own metrics
+4. Always ask what accounts for the trends you see in data. Is it luck? Are good teams more lucky? If yes, then what makes them good to begin with?
+
+##References and Further Reading:
+https://hockey-graphs.com/2017/12/01/behind-the-numbers-what-makes-a-stat-good/
+
+https://theathletic.com/121980/2017/10/09/an-advanced-stat-primer-understanding-basic-hockey-metrics/
+
+http://rpubs.com/evolvingwild/395136/
+
+http://www.naturalstattrick.com/glossary.php?teams
+
+http://moneypuck.com/about.htm
