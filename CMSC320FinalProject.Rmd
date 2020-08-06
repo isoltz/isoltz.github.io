@@ -1,5 +1,5 @@
 ---
-title: "Final Project"
+title: "Investigation of Advanced Hockey Statistics"
 output: html_document
 ---
 
